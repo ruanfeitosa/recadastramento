@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Coleta de Coordenadas e Assinatura</title>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    button {
+      margin: 10px 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      width: 100%;
+      max-width: 500px;
+      height: 300px;
+    }
+    #signature-image {
+      margin-top: 15px;
+      max-width: 100%;
+      display: none;
+    }
+    .info {
+      margin-top: 10px;
+      font-size: 16px;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Coleta de Coordenadas e Assinatura</h1>
+
+    <button onclick="getLocation()">Coletar Coordenadas</button>
+    <button onclick="mostrarAssinatura()">Coletar Assinatura</button>
+
+    <div id="info" class="info"></div>
+    <div id="datetime" class="info"></div>
+    <a id="mapLink" class="info" target="_blank" style="display:none;">Abrir no Google Maps</a>
+    <button id="copyButton" onclick="copyLink()" style="display:none;">Copiar Link</button>
+
+    <div id="signatureSection" class="hidden">
+      <h2 id="signTitle" style="display:none;">Assine abaixo</h2>
+      <canvas id="signature-pad"></canvas>
+      <br>
+      <button id="clearButton" onclick="clearSignature()" style="display:none;">Limpar Assinatura</button>
+      <button id="saveSignatureButton" onclick="saveSignature()">Salvar Assinatura</button>
+      <h3 id="signatureLabel" style="display:none;">Assinatura:</h3>
+      <img id="signature-image" />
+
+      <div id="saveSection" class="hidden">
+        <label for="fileName">Nome do servidor(a):</label>
+        <input type="text" id="fileName" placeholder="Digite o nome da assinatura" />
+        <button id="downloadButton" onclick="downloadSignature()">Download da Assinatura</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let mapUrl = "";
+    let signaturePad;
+
+    function getLocation() {
+      document.getElementById("info").innerHTML = "<span class='loading'>Coletando coordenadas...</span>";
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(showCoordinates, showError);
+      } else {
+        document.getElementById("info").innerText = "Geolocalização não é suportada neste navegador.";
+      }
+    }
+
+    function showCoordinates(position) {
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      document.getElementById("mapLink").href = mapUrl;
+      document.getElementById("mapLink").style.display = "block";
+      document.getElementById("copyButton").style.display = "inline-block";
+
+      const dateTimeString = "Data e Hora da Coleta: " + new Date().toLocaleString();
+      document.getElementById("datetime").innerText = dateTimeString;
+
+      getCity(latitude, longitude);
+    }
+
+    function getCity(lat, lng) {
+      const apiKey = "YOUR_GOOGLE_MAPS_API_KEY"; 
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          if (data.results.length > 0) {
+            const components = data.results[0].address_components;
+            const cityComp = components.find(comp => comp.types.includes("administrative_area_level_2"));
+            const city = cityComp ? cityComp.long_name : "Cidade não identificada";
+            document.getElementById("info").innerText = "Cidade: " + city;
+          } else {
+            document.getElementById("info").innerText = "Endereço não encontrado.";
+          }
+        })
+        .catch(() => {
+          document.getElementById("info").innerText = "Erro ao obter cidade.";
+        });
+    }
+
+    function showError(error) {
+      const msg = {
+        1: "Permissão negada.",
+        2: "Posição indisponível.",
+        3: "Tempo excedido.",
+        0: "Erro desconhecido."
+      };
+      document.getElementById("info").innerText = msg[error.code] || "Erro.";
+    }
+
+    function copyLink() {
+      if (!mapUrl) return alert("Coordenadas não coletadas.");
+      const temp = document.createElement("input");
+      temp.value = mapUrl;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand("copy");
+      document.body.removeChild(temp);
+      alert("Link copiado!");
+    }
+
+    function mostrarAssinatura() {
+      document.getElementById("signatureSection").classList.remove("hidden");
+      document.getElementById("signTitle").style.display = "block";
+      document.getElementById("clearButton").style.display = "inline-block";
+      signaturePad = new SignaturePad(document.getElementById("signature-pad"));
+    }
+
+    function clearSignature() {
+      if (signaturePad) {
+        signaturePad.clear();
+        document.getElementById("signature-image").style.display = "none";
+      }
+    }
+
+    function saveSignature() {
+      if (!signaturePad || signaturePad.isEmpty()) {
+        return alert("Por favor, assine antes de salvar.");
+      }
+
+      const dataUrl = signaturePad.toDataURL();
+      const img = document.getElementById("signature-image");
+      img.src = dataUrl;
+      img.style.display = "block";
+      img.dataset.url = dataUrl;
+
+      // Exibe o texto "Assinatura" apenas após a assinatura ser salva
+      document.getElementById("signatureLabel").style.display = "block";
+      
+      // Exibe a seção para o nome do arquivo e botão de download
+      document.getElementById("saveSection").classList.remove("hidden");
+    }
+
+    function downloadSignature() {
+      const fileName = document.getElementById("fileName").value || "assinatura"; // Se não digitar, usa o padrão "assinatura"
+      const img = document.getElementById("signature-image");
+      const link = document.createElement("a");
+      link.href = img.dataset.url;
+      link.download = `${fileName}.png`;
+      link.click();
+    }
+  </script>
+</body>
+</html>
